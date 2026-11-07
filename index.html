@@ -1,0 +1,1265 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>보냉 시뮬레이터</title>
+<meta name="description" content="에너지 보존과 뉴턴의 냉각 법칙으로 냉장 포장의 보냉 시간을 계산하는 시뮬레이터">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#eef3f6;--panel:#ffffff;--ink:#13212b;--muted:#5b6b76;--line:#cfd9e0;--grid:#d9e2e8;
+  --cold:#1f5fa8;--cold-soft:#e4eef9;--warm:#c93a2b;--warm-soft:#f9e7e3;--focus:#1f5fa8;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0e1820;--panel:#15232d;--ink:#e4edf2;--muted:#93a6b3;--line:#2a3d4d;--grid:#22364a;
+    --cold:#6fa8e8;--cold-soft:#16293b;--warm:#f06a55;--warm-soft:#33191b;--focus:#6fa8e8;
+    color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+.wrap{max-width:1240px;margin:0 auto;padding:0 16px}
+header.top{padding:28px 0 4px}
+header.top h1{margin:0;font-size:28px;line-height:1.25;font-weight:700;letter-spacing:-0.01em}
+header.top .lede{margin:6px 0 0;color:var(--muted);max-width:64ch}
+
+.layout{display:grid;grid-template-columns:330px minmax(0,1fr);gap:20px;max-width:1240px;margin:0 auto;padding:16px 16px 32px;align-items:start}
+@media (max-width:920px){.layout{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px}
+
+/* 조건 설정 */
+.controls{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+@media (max-width:920px){.controls{position:static;max-height:none}}
+.controls h2{margin:0 0 2px;font-size:17px;line-height:1.4}
+.controls .hint{margin:0 0 16px;font-size:13px;color:var(--muted)}
+.group{border-left:3px solid var(--line);padding:0 0 0 12px;margin:0 0 20px}
+.group h3{margin:0 0 6px;font-size:15px;font-weight:600}
+.group[data-layer="outside"]{border-left-color:var(--warm)}
+.group[data-layer="wall"]{border-left-color:color-mix(in srgb,var(--warm) 62%,var(--cold))}
+.group[data-layer="contents"]{border-left-color:color-mix(in srgb,var(--warm) 30%,var(--cold))}
+.group[data-layer="pack"]{border-left-color:var(--cold)}
+.row{margin:0 0 10px}
+.row label{display:block;font-size:13.5px;color:var(--ink);margin-bottom:2px}
+.ctl{display:flex;align-items:center;gap:8px}
+.ctl input[type=range]{flex:1;min-width:0;accent-color:var(--cold)}
+.ctl input[type=number]{width:86px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:transparent;text-align:right}
+.ctl select{flex:1;padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.unit{font-size:12.5px;color:var(--muted);min-width:52px}
+.row .note{margin:2px 0 0;font-size:12px;color:var(--muted);line-height:1.5}
+.row.off{opacity:.45}
+.chk{display:flex !important;align-items:center;gap:8px;cursor:pointer}
+.chk input{accent-color:var(--cold);width:16px;height:16px}
+
+/* 보기 영역 */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:-4px 0 18px;overflow-x:auto;scrollbar-width:none}
+.tabs button{border:0;background:none;padding:10px 12px;font-size:14.5px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;cursor:pointer}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.view[hidden]{display:none}
+.intro{margin:0 0 14px;max-width:72ch}
+.view h3{font-size:16px;margin:26px 0 8px}
+
+.readout{display:flex;flex-wrap:wrap;margin:0 0 14px;gap:12px 0}
+.readout div{padding:0 18px;border-left:1px solid var(--line)}
+.readout div:first-child{padding-left:0;border-left:0}
+.readout dt{font-size:12.5px;color:var(--muted)}
+.readout dd{margin:0;font-size:19px;font-weight:600;line-height:1.35}
+.readout .primary dd{font-size:28px;color:var(--cold)}
+.readout .primary.over dd{color:var(--warm)}
+.readout dd small{font-size:12.5px;font-weight:400;color:var(--muted)}
+@media (max-width:600px){.readout div{border-left:0;padding:0 20px 0 0}}
+
+.stage{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:20px;align-items:center;margin:0 0 4px}
+@media (max-width:720px){.stage{grid-template-columns:minmax(0,1fr);gap:10px}}
+.stage svg{display:block;width:100%;height:auto}
+.now{margin:0;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px 0;font-size:14px}
+.now dt{color:var(--muted);display:flex;align-items:center;gap:6px;padding-right:12px}
+.now dd{margin:0;font-weight:600;text-align:right}
+.now dd small{display:block;font-size:12.5px;font-weight:400;color:var(--muted)}
+.now .sum{border-top:1px solid var(--line);padding-top:7px}
+.now-note{font-size:12.5px;color:var(--muted);margin:10px 0 0}
+.timebar{display:flex;align-items:center;gap:10px;margin:6px 0 16px}
+.timebar input[type=range]{flex:1;min-width:0;accent-color:var(--cold)}
+.timebar output{min-width:88px;text-align:right;font-size:14px;font-weight:600}
+.btn.play{min-width:68px}
+.mini{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:10px 0 0;max-width:720px}
+.mini figure{margin:0}
+.mini svg{display:block;width:100%;height:auto}
+.mini figcaption{font-size:12.5px;color:var(--muted);text-align:center;margin-top:6px;line-height:1.45}
+.mini figcaption b{display:block;color:var(--ink);font-size:16px}
+.chart-box canvas{display:block;width:100%;height:340px}
+@media (max-width:600px){.chart-box canvas{height:260px}}
+.legend{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted)}
+.legend li{display:flex;align-items:center;gap:6px}
+.sw{display:inline-block;width:22px;height:0;border-top:3px solid currentColor}
+.sw.dash{border-top-style:dashed;border-top-width:2px}
+.sw.dot{border-top-style:dotted;border-top-width:2px}
+.sw.thermal{height:3px;border:0;background:linear-gradient(90deg,var(--cold) 50%,var(--warm) 50%)}
+.sw.pt{width:9px;height:9px;border-radius:50%;border:0;background:currentColor}
+.sw.pt.hollow{background:none;border:2px solid currentColor}
+
+.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0 0}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:7px 12px;cursor:pointer;font-size:14px}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--cold);border-color:var(--cold);color:#fff}
+.btn:disabled{opacity:.45;cursor:default}
+.status{font-size:13px;color:var(--muted)}
+.foot{font-size:13.5px;color:var(--muted);margin:14px 0 0;max-width:80ch}
+
+.big{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:6px 0 4px}
+.big strong{font-size:44px;line-height:1.1;color:var(--cold);font-weight:700}
+.big span{color:var(--muted)}
+.eq{font-size:15px;margin:6px 0;padding:8px 12px;border-left:3px solid var(--line);background:color-mix(in srgb,var(--bg) 60%,transparent);overflow-x:auto}
+.caveat{font-size:13.5px;color:var(--muted);border-left:3px solid var(--warm);padding:2px 0 2px 12px;margin:18px 0 0;max-width:80ch}
+.msg{color:var(--warm);font-size:14px}
+
+table.cmp{border-collapse:collapse;width:100%;max-width:640px;font-size:14px;margin:10px 0 0}
+table.cmp th,table.cmp td{text-align:left;padding:7px 10px 7px 0;border-bottom:1px solid var(--line)}
+table.cmp th{font-weight:600;color:var(--muted);font-size:13px}
+table.cmp td.num{text-align:right;white-space:nowrap}
+
+.form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 16px;margin:0 0 6px}
+@media (max-width:700px){.form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.form-grid label{display:flex;flex-direction:column;font-size:13px;color:var(--muted);gap:3px}
+.form-grid input,.form-grid select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);font-size:14.5px}
+
+.bars{margin:12px 0 0;max-width:680px}
+.bar{display:grid;grid-template-columns:150px minmax(0,1fr) 84px;gap:10px;align-items:center;font-size:13.5px;margin:0 0 8px}
+.bar .track{height:12px;background:var(--grid);border-radius:3px;overflow:hidden}
+.bar .fill{height:100%;background:var(--cold);opacity:.55}
+.bar.alt .fill{opacity:1;background:var(--warm)}
+.bar.ref .fill{opacity:1}
+.bar .v{text-align:right}
+@media (max-width:600px){.bar{grid-template-columns:110px minmax(0,1fr) 72px}}
+
+.data-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:12px 0 0}
+@media (max-width:640px){.data-grid{grid-template-columns:minmax(0,1fr)}}
+.data-grid h4{margin:0 0 6px;font-size:14px}
+.data-grid textarea{width:100%;height:170px;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);font-size:13.5px;line-height:1.45;resize:vertical}
+.inline{display:flex;align-items:center;gap:8px;font-size:13.5px;margin:0 0 6px}
+.inline input{width:64px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+
+.model p,.model li{max-width:76ch}
+.model ul{padding-left:20px}
+footer{max-width:1240px;margin:0 auto;padding:0 16px 40px;font-size:12.5px;color:var(--muted)}
+footer p{margin:4px 0;max-width:100ch}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <h1>보냉 시뮬레이터</h1>
+    <p class="lede">바깥 열이 포장 벽을 지나 내용물로 들어오는 과정을 에너지 보존으로 계산해서, 내용물이 냉장 기준 온도를 넘기까지 얼마나 걸리는지 보여 줘요.</p>
+  </div>
+</header>
+
+<main class="layout">
+  <aside class="panel controls" aria-label="조건 설정">
+    <h2>조건 설정</h2>
+    <p class="hint">왼쪽 띠 색은 열이 들어오는 길을 나타내요. 따뜻한 바깥 공기에서 포장 벽, 내용물을 거쳐 차가운 보냉팩까지 이어져요.</p>
+    <div id="controls"></div>
+  </aside>
+
+  <section class="panel views">
+    <div class="tabs" role="tablist" aria-label="보기">
+      <button role="tab" id="tab-sim" aria-controls="view-sim" aria-selected="true" data-view="sim">시뮬레이션</button>
+      <button role="tab" id="tab-a" aria-controls="view-a" aria-selected="false" data-view="a">출발 온도 vs 포장</button>
+      <button role="tab" id="tab-b" aria-controls="view-b" aria-selected="false" data-view="b">대체 재료 두께</button>
+      <button role="tab" id="tab-cal" aria-controls="view-cal" aria-selected="false" data-view="cal">데이터 보정·검증</button>
+      <button role="tab" id="tab-model" aria-controls="view-model" aria-selected="false" data-view="model">모델 설명</button>
+    </div>
+
+    <!-- 시뮬레이션 -->
+    <div class="view" id="view-sim" role="tabpanel" aria-labelledby="tab-sim">
+      <dl class="readout" id="sim-readout"></dl>
+      <div class="stage">
+        <svg id="box-sim" viewBox="0 0 520 330" role="img" aria-label="단열 상자 단면도"></svg>
+        <div>
+          <dl class="now" id="now-sim"></dl>
+          <p class="now-note">화살표 굵기는 흐르는 열의 양이에요. 들어온 열에서 보냉팩이 흡수한 열을 뺀 만큼 내용물 온도가 올라가요.</p>
+        </div>
+      </div>
+      <div class="timebar">
+        <button class="btn play" id="btn-play" type="button">재생</button>
+        <input type="range" id="tm" min="0" max="6" step="0.015" value="0" aria-label="보고 싶은 시각">
+        <output id="tm-out" for="tm">0분</output>
+      </div>
+      <div class="chart-box"><canvas id="cv-sim" role="img" aria-label="시간에 따른 내용물 온도 그래프"></canvas></div>
+      <ul class="legend" id="lg-sim"></ul>
+      <div class="actions">
+        <button class="btn" id="btn-base">지금 곡선을 비교선으로 남기기</button>
+        <button class="btn" id="btn-base-clear" disabled>비교선 지우기</button>
+        <button class="btn" id="btn-csv">CSV로 내려받기</button>
+      </div>
+      <p class="foot" id="sim-foot"></p>
+    </div>
+
+    <!-- A: 출발 온도 vs 포장 -->
+    <div class="view" id="view-a" role="tabpanel" aria-labelledby="tab-a" hidden>
+      <p class="intro">보냉팩이 없을 때, 출발 온도를 낮추는 것이 포장 성능(시간상수 τ)을 몇 배 높이는 것과 같은지 계산해요. 이 배율에는 τ가 들어가지 않아서 포장 재료나 상자 크기와 상관없이 성립해요.</p>
+      <div class="row" style="max-width:420px">
+        <label for="in-T0b">낮춘 출발 온도 T₀′</label>
+        <div class="ctl">
+          <input type="range" id="rg-T0b" min="-2" max="20" step="0.5" value="2" aria-hidden="true" tabindex="-1">
+          <input type="number" id="in-T0b" min="-2" step="0.5" value="2" inputmode="decimal">
+          <span class="unit">°C</span>
+        </div>
+        <p class="note">지금 출발 온도는 왼쪽 ‘내용물’의 값을 써요.</p>
+      </div>
+      <div id="a-body"></div>
+      <div id="a-boxes"></div>
+      <h3>바깥 온도가 바뀌어도 성립할까</h3>
+      <div class="chart-box"><canvas id="cv-a" role="img" aria-label="바깥 온도에 따른 τ 배율 그래프"></canvas></div>
+      <ul class="legend" id="lg-a"></ul>
+      <p class="caveat">보냉팩이 들어가면 0°C 근처에서 온도가 한동안 멈추는 구간이 생겨서 이 비율 계산은 맞지 않아요. 그때는 시뮬레이션 탭에서 두 조건을 비교선으로 겹쳐 보세요. 또 식품은 얼면 안 되니까 출발 온도를 낮추는 데는 하한이 있어요.</p>
+    </div>
+
+    <!-- B: 대체 재료 두께 -->
+    <div class="view" id="view-b" role="tabpanel" aria-labelledby="tab-b" hidden>
+      <p class="intro">겉면 공기층의 열저항(1/h)은 어떤 재료든 같으니까, 벽의 d ÷ λ만 같으면 τ도 같아요. 그래서 대체 재료로 같은 보냉 성능을 내는 두께는 <b>기준 두께 × (대체 재료 λ ÷ 기준 재료 λ)</b>예요.</p>
+      <div class="form-grid">
+        <label>기준 재료
+          <select id="b-ref"></select>
+        </label>
+        <label>기준 재료 λ (W/m·K)
+          <input type="number" id="b-refLam" step="0.0005" min="0" value="0.04" inputmode="decimal">
+        </label>
+        <label>기준 두께 (mm)
+          <input type="number" id="b-refD" step="1" min="0" value="20" inputmode="decimal">
+        </label>
+        <label>대체 재료 이름
+          <input type="text" id="b-altName" placeholder="예: 골판지">
+        </label>
+        <label>대체 재료 λ (W/m·K)
+          <input type="number" id="b-altLam" step="0.0005" min="0" placeholder="문헌값 입력" inputmode="decimal">
+        </label>
+        <label>λ 불확실성 (±%)
+          <input type="number" id="b-unc" step="5" min="0" max="90" value="20" inputmode="decimal">
+        </label>
+      </div>
+      <div id="b-body"></div>
+      <h3>같은 보냉 성능을 내는 두께</h3>
+      <div class="bars" id="b-bars"></div>
+      <p class="caveat">두꺼워질수록 겉넓이가 커지는 효과는 무시했어요. λ는 반드시 실측값의 출처를 함께 적으세요. EPS·EPE·rPET VIP 값은 Kim 외(2023)가 열류계로 측정한 값이에요.</p>
+    </div>
+
+    <!-- 보정·검증 -->
+    <div class="view" id="view-cal" role="tabpanel" aria-labelledby="tab-cal" hidden>
+      <p class="intro">보정용 데이터로 UA와 K를 맞추고, 그 값으로 검증용 데이터를 예측해 비교해요. 보정에 쓴 데이터로는 검증하지 않아요.</p>
+      <p class="foot" style="margin-top:0">내용물 질량·비열, 보냉팩 질량·처음 온도·융해열, 바깥 온도는 왼쪽 설정값을 그대로 써요. 데이터를 얻은 실험의 조건(논문의 재료 및 방법)을 먼저 왼쪽에 입력하세요.</p>
+      <div class="actions"><button class="btn" id="btn-load-lee">이지운 외(2022) Table 1 불러오기</button></div>
+      <div class="data-grid">
+        <div>
+          <h4>보정용 데이터</h4>
+          <div class="inline"><label for="n-cal">보냉팩 개수</label><input type="number" id="n-cal" min="0" step="1" value="1"></div>
+          <textarea id="ta-cal" spellcheck="false" placeholder="한 줄에 하나씩: 시간(h), 온도(°C)"></textarea>
+        </div>
+        <div>
+          <h4>검증용 데이터</h4>
+          <div class="inline"><label for="n-val">보냉팩 개수</label><input type="number" id="n-val" min="0" step="1" value="2"></div>
+          <textarea id="ta-val" spellcheck="false" placeholder="한 줄에 하나씩: 시간(h), 온도(°C)"></textarea>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="btn-fit">자동 보정 실행</button>
+        <span class="status" id="fit-status" role="status"></span>
+      </div>
+      <dl class="readout" id="cal-readout" style="margin-top:16px"></dl>
+      <div class="chart-box"><canvas id="cv-cal" role="img" aria-label="데이터와 모델 비교 그래프"></canvas></div>
+      <ul class="legend" id="lg-cal"></ul>
+      <div class="actions">
+        <button class="btn" id="btn-apply" disabled>보정값을 시뮬레이터에 적용</button>
+        <button class="btn" id="btn-same" disabled>출발 온도를 같게 맞춰 다시 비교</button>
+      </div>
+      <p class="foot" id="cal-foot"></p>
+    </div>
+
+    <!-- 모델 설명 -->
+    <div class="view model" id="view-model" role="tabpanel" aria-labelledby="tab-model" hidden>
+      <h3 style="margin-top:0">에너지 보존으로 세운 식</h3>
+      <p>아주 짧은 시간 Δt 동안 들어온 에너지는 그동안 저장된 에너지와 같아요(열역학 제1법칙).</p>
+      <p class="eq">내용물: m·c·ΔT = [ UA·(Tₐ − T) − n·K·(T − T팩) ]·Δt</p>
+      <p class="eq">보냉팩(n개): ΔH팩 = n·K·(T − T팩)·Δt</p>
+      <p>보냉팩 온도는 저장한 에너지 H팩으로 정해요. 0°C 아래에서는 얼음 비열(2100 J/kg·K)을 쓰고, 0°C에서는 융해열을 다 채울 때까지 온도가 멈추며, 다 녹은 뒤에는 물 비열(4186 J/kg·K)을 써요.</p>
+      <h3>포장 벽의 UA</h3>
+      <p class="eq">UA = A ÷ ( 1/h + d/λ )</p>
+      <p>겉면 공기층(1/h)과 포장재(d/λ)의 열저항을 직렬로 더한 값이에요.</p>
+      <h3>보냉팩이 없을 때</h3>
+      <p class="eq">T(t) = Tₐ − (Tₐ − T₀)·e^(−t/τ),  τ = m·c ÷ UA</p>
+      <p>시뮬레이션 탭 아래에 이 식으로 계산한 도달 시간이 함께 나와서, 수치 계산이 맞는지 확인할 수 있어요.</p>
+      <h3>계산 방법</h3>
+      <p>위 식을 Δt마다 반복해서 더하는 오일러 방법이에요. Δt는 가장 빠르게 변하는 부분의 시간상수의 1/5 이하(최대 15초)로 자동으로 정해져요.</p>
+      <h3>가정</h3>
+      <ul>
+        <li>내용물 온도는 어디서나 같아요.</li>
+        <li>바깥 온도는 일정해요.</li>
+        <li>포장 벽 자체가 품는 열과, 두께에 따른 겉넓이 변화는 무시해요.</li>
+        <li>벽으로 들어온 열은 내용물이 먼저 받고, 보냉팩은 내용물하고만 열을 주고받아요.</li>
+        <li>결로와 증발에 따른 숨은열은 무시해요.</li>
+      </ul>
+      <h3>출처</h3>
+      <ul>
+        <li>Kim, S. Y. 외 (2023). Comparative Life Cycle Assessment of Reusable and Disposable Distribution Packaging for Fresh Food. <i>Sustainability</i>, 15, 16448. EPS·EPE·rPET VIP 열전도율 실측값.</li>
+        <li>이지운·허민수·이정석 (2022). 시판 보냉팩 및 스티로폼 박스 상온 유통시 효율적인 수산물 선도지표 설정. <i>한국수산과학회지</i>, 55(5), 670–680. Table 1 온도 데이터.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p>교육용 단순 모델이에요. 결과는 모델에 따른 예측이고, 실제 배송 환경에서의 측정으로 확인해야 해요.</p>
+</footer>
+
+<script>
+// ===== MODEL START =====
+const C_ICE = 2100, C_WATER = 4186, T_MELT = 0;
+
+function wallUA(s){
+  if (s.useUAo) return s.UAo;
+  const R = 1 / s.h + (s.d / 1000) / s.lam;
+  return s.A / R;
+}
+
+// p: {Ta, T0, mP, cP, UA, nPack, mPack, TpInit, Lf(kJ/kg), K, durH, Tlim}
+function simulate(p, opt){
+  opt = opt || {};
+  const CP = p.mP * p.cP;
+  const n = Math.max(0, Math.round(p.nPack));
+  const mC = n * p.mPack;
+  const Kt = n * p.K;               // 보냉팩이 늘면 닿는 면도 늘어서 전체 열전달 = 개수 × 1개당 K
+  const hasPack = mC > 0 && Kt > 0;
+  const L = p.Lf * 1000;
+  const durS = p.durH * 3600;
+  const taus = [CP / (p.UA + (hasPack ? Kt : 0))];
+  if (hasPack) taus.push(mC * C_ICE / Kt, mC * C_WATER / Kt);
+  let dt = Math.min(15, Math.max(0.2, 0.2 * Math.min.apply(null, taus)));
+  const maxSteps = opt.maxSteps || 300000;
+  if (durS / dt > maxSteps) dt = durS / maxSteps;
+
+  const TfromH = H => H < 0 ? T_MELT + H / (mC * C_ICE)
+                     : (H <= mC * L ? T_MELT : T_MELT + (H - mC * L) / (mC * C_WATER));
+  const H0 = hasPack ? mC * C_ICE * (Math.min(p.TpInit, T_MELT) - T_MELT) : 0;
+  let H = H0, Tp = p.T0, Tc = hasPack ? TfromH(H) : NaN, t = 0;
+
+  const out = { tCross: null, tMelt: null, crossedAtStart: p.T0 >= p.Tlim, Qwall: 0 };
+  const sampleTimes = opt.sampleTimes || null;
+  const samples = sampleTimes ? new Array(sampleTimes.length) : null;
+  let si = 0;
+  const rec = !opt.light;
+  const recEvery = durS / 400;
+  let nextRec = 0;
+  const ts = [], tps = [], tcs = [], hs = [];
+  const record = () => { ts.push(t / 3600); tps.push(Tp); tcs.push(Tc); hs.push(H); };
+  if (rec) { record(); nextRec = recEvery; }
+  while (sampleTimes && si < sampleTimes.length && sampleTimes[si] <= 0) samples[si++] = Tp;
+
+  while (t < durS - 1e-9) {
+    const step = Math.min(dt, durS - t);
+    const qWall = p.UA * (p.Ta - Tp);
+    const qPack = hasPack ? Kt * (Tp - Tc) : 0;
+    const TpNew = Tp + (qWall - qPack) * step / CP;
+    const Hnew = hasPack ? H + qPack * step : 0;
+    const tNew = t + step;
+    out.Qwall += qWall * step;
+    if (out.tCross === null && !out.crossedAtStart && Tp < p.Tlim && TpNew >= p.Tlim) {
+      out.tCross = t + step * (p.Tlim - Tp) / (TpNew - Tp);
+    }
+    if (hasPack && out.tMelt === null && H <= mC * L && Hnew > mC * L) {
+      out.tMelt = t + step * (mC * L - H) / (Hnew - H);
+    }
+    while (sampleTimes && si < sampleTimes.length && sampleTimes[si] <= tNew + 1e-9) {
+      const f = (sampleTimes[si] - t) / step;
+      samples[si++] = Tp + f * (TpNew - Tp);
+    }
+    Tp = TpNew; H = Hnew; if (hasPack) Tc = TfromH(H); t = tNew;
+    if (rec && t >= nextRec - 1e-9) { record(); nextRec += recEvery; }
+  }
+  if (rec && ts[ts.length - 1] < durS / 3600 - 1e-9) record();
+  while (sampleTimes && si < sampleTimes.length) samples[si++] = Tp;
+
+  Object.assign(out, { t: ts, Tp: tps, Tc: tcs, Tend: Tp, samples,
+    tau: CP / p.UA, UA: p.UA, CP, mC, H0, Hend: H, hasPack, H: hs, Kt, Lmelt: mC * L });
+  return out;
+}
+
+// 보냉팩이 없을 때 기준 온도 도달 시간(초)
+function limitTime(tau, Ta, T0, Tlim){
+  if (!(Ta > Tlim) || !(T0 < Tlim)) return null;
+  return tau * Math.log((Ta - T0) / (Ta - Tlim));
+}
+
+// 출발 온도를 T0 → T0b로 바꾼 효과 = τ를 몇 배 늘린 효과
+function equivRatio(Ta, T0, T0b, Tlim){
+  if (!(Ta > Tlim) || !(T0 < Tlim) || !(T0b < Tlim)) return null;
+  return Math.log((Ta - T0b) / (Ta - Tlim)) / Math.log((Ta - T0) / (Ta - Tlim));
+}
+
+// 같은 τ 배율 k를 두께로 환산: d′ = λ·(k·(1/h + d/λ) − 1/h)
+function thicknessFor(k, lam, h, dMm){
+  const Rw = dMm / 1000 / lam, Ra = 1 / h;
+  return lam * (k * (Ra + Rw) - Ra) * 1000;
+}
+
+function rmseOf(samples, pts){
+  let s = 0;
+  for (let i = 0; i < pts.length; i++) { const e = samples[i] - pts[i].T; s += e * e; }
+  return Math.sqrt(s / pts.length);
+}
+
+// 로그 격자 탐색으로 UA(와 1개당 K)를 맞춤: 넓은 격자 → 좋은 후보 4곳을 좁혀 가며 다시 탐색
+function fitParams(base, pts, nPack, fitK){
+  const times = pts.map(d => d.t * 3600);
+  const p0 = Object.assign({}, base, { T0: pts[0].T, nPack, durH: pts[pts.length - 1].t, Tlim: 1e9 });
+  const err = (lUA, lK) => {
+    const r = simulate(Object.assign({}, p0, { UA: Math.exp(lUA), K: Math.exp(lK) }), { light: true, sampleTimes: times, maxSteps: 100000 });
+    return rmseOf(r.samples, pts);
+  };
+  const UAlim = [Math.log(0.003), Math.log(10)], Klim = [Math.log(0.001), Math.log(10)];
+  const lK0 = Math.log(base.K > 0 ? base.K : 1);
+  const n1 = fitK ? 56 : 240;
+  const dA = (UAlim[1] - UAlim[0]) / (n1 - 1), dK = fitK ? (Klim[1] - Klim[0]) / (n1 - 1) : 0;
+  const grid = [];
+  for (let i = 0; i < n1; i++) for (let j = 0; j < (fitK ? n1 : 1); j++) {
+    const lUA = UAlim[0] + i * dA, lK = fitK ? Klim[0] + j * dK : lK0;
+    grid.push({ e: err(lUA, lK), lUA, lK, i, j });
+  }
+  grid.sort((a, b) => a.e - b.e);
+  const starts = [];
+  for (const g of grid) {
+    if (starts.every(s => Math.abs(s.i - g.i) > 2 || Math.abs(s.j - g.j) > 2)) starts.push(g);
+    if (starts.length === 4) break;
+  }
+  let best = grid[0];
+  starts.forEach(s0 => {
+    let c = s0, sA = dA, sK = dK;
+    for (let st = 0; st < 5; st++) {
+      const n = 11, cA = c.lUA, cK = c.lK;
+      for (let i = 0; i < n; i++) for (let j = 0; j < (fitK ? n : 1); j++) {
+        const lUA = cA - 2 * sA + i * (4 * sA / (n - 1));
+        const lK = fitK ? cK - 2 * sK + j * (4 * sK / (n - 1)) : lK0;
+        const e = err(lUA, lK);
+        if (e < c.e) c = { e, lUA, lK };
+      }
+      sA *= 0.4; sK *= 0.4;
+    }
+    if (c.e < best.e) best = c;
+  });
+  const near = (v, lim) => Math.abs(v - lim[0]) < 0.05 || Math.abs(v - lim[1]) < 0.05;
+  return { UA: Math.exp(best.lUA), K: fitK ? Math.exp(best.lK) : base.K, rmse: best.e,
+    edge: near(best.lUA, UAlim) || (fitK && near(best.lK, Klim)) };
+}
+// ===== MODEL END =====
+
+/* ---------- 설정값 ---------- */
+const MATERIALS = [
+  { id: 'eps', name: 'EPS(스티로폼)', lam: 0.040, src: 'Kim 외(2023) 열류계 실측값' },
+  { id: 'epe', name: 'EPE(발포폴리에틸렌)', lam: 0.05789, src: 'Kim 외(2023) 열류계 실측값' },
+  { id: 'vip', name: 'rPET VIP(진공단열패널)', lam: 0.01144, src: 'Kim 외(2023) 열류계 실측값' },
+  { id: 'custom', name: '직접 입력', lam: null, src: '문헌에서 찾은 실측값과 출처를 함께 기록하세요.' }
+];
+
+const DEF = [
+  { key: 'outside', title: '바깥 공기', items: [
+    { id: 'Ta', label: '바깥 온도', unit: '°C', min: 0, max: 45, step: 0.5, v: 25 },
+    { id: 'h', label: '겉면 열전달계수 h', unit: 'W/m²·K', min: 2, max: 30, step: 0.5, v: 10,
+      note: '정지한 공기를 가정한 값이에요. 데이터 보정으로 다시 맞출 수 있어요.' }
+  ]},
+  { key: 'wall', title: '포장 벽', items: [
+    { type: 'material' },
+    { id: 'lam', label: '열전도율 λ', unit: 'W/m·K', min: 0.005, max: 0.2, step: 0.0005, v: 0.040 },
+    { id: 'd', label: '두께', unit: 'mm', min: 0, max: 100, step: 1, v: 20 },
+    { id: 'A', label: '겉넓이', unit: 'm²', min: 0.01, max: 1.5, step: 0.01, v: 0.2 },
+    { type: 'uaOverride' },
+    { id: 'UAo', label: 'UA 직접 입력', unit: 'W/K', min: 0.01, max: 10, step: 0.001, v: 0.333 }
+  ]},
+  { key: 'contents', title: '내용물', items: [
+    { id: 'T0', label: '출발 온도', unit: '°C', min: -2, max: 20, step: 0.5, v: 5 },
+    { id: 'mP', label: '질량', unit: 'kg', min: 0.05, max: 10, step: 0.05, v: 1 },
+    { id: 'cP', label: '비열', unit: 'J/kg·K', min: 1000, max: 4500, step: 10, v: 4186, note: '기본값은 물이에요.' }
+  ]},
+  { key: 'pack', title: '보냉팩', items: [
+    { id: 'nPack', label: '개수', unit: '개', min: 0, max: 6, step: 1, v: 0 },
+    { id: 'mPack', label: '1개 질량', unit: 'kg', min: 0.05, max: 1, step: 0.01, v: 0.2 },
+    { id: 'TpInit', label: '처음 온도', unit: '°C', min: -25, max: 0, step: 0.5, v: -18 },
+    { id: 'Lf', label: '융해열', unit: 'kJ/kg', min: 150, max: 340, step: 1, v: 334,
+      note: '얼음 기준값이에요. 젤 보냉팩은 조금 낮을 수 있어요.' },
+    { id: 'K', label: '보냉팩 1개↔내용물 열전달 K', unit: 'W/K', min: 0.01, max: 5, step: 0.01, v: 0.5,
+      note: '가정값이에요. 보냉팩이 늘면 닿는 면도 늘어서 전체 열전달은 K × 개수로 계산해요. 보정 탭에서 데이터로 맞출 수 있어요.' }
+  ]},
+  { key: 'run', title: '기준과 계산 시간', items: [
+    { id: 'Tlim', label: '냉장 기준 온도', unit: '°C', min: 0, max: 20, step: 0.5, v: 10 },
+    { id: 'dur', label: '계산 시간', unit: 'h', min: 0.5, max: 48, step: 0.5, v: 6 }
+  ]}
+];
+
+const S = { mat: 'eps', useUAo: false };
+const $ = s => document.querySelector(s);
+let view = 'sim', baseline = null, lastSim = null, fitState = null, sameState = null;
+
+/* ---------- 숫자 표시 ---------- */
+function fmt(x, d){
+  if (x == null || !isFinite(x)) return '—';
+  return x.toLocaleString('ko-KR', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+function fmtDur(sec){
+  if (sec == null || !isFinite(sec)) return '—';
+  const m = Math.round(sec / 60);
+  if (m < 60) return m + '분';
+  const h = Math.floor(m / 60), mm = m % 60;
+  return mm ? `${h}시간 ${mm}분` : `${h}시간`;
+}
+const par = x => (x < 0 ? `(${fmt(x, 1)})` : fmt(x, 1));
+
+/* ---------- 조건 설정 패널 ---------- */
+function numRow(it){
+  S[it.id] = it.v;
+  const row = document.createElement('div');
+  row.className = 'row'; row.id = 'row-' + it.id;
+  row.innerHTML = `<label for="in-${it.id}">${it.label}</label>
+    <div class="ctl">
+      <input type="range" id="rg-${it.id}" min="${it.min}" max="${it.max}" step="${it.step}" value="${it.v}" aria-hidden="true" tabindex="-1">
+      <input type="number" id="in-${it.id}" step="${it.step}" value="${it.v}" inputmode="decimal">
+      <span class="unit">${it.unit}</span>
+    </div>${it.note ? `<p class="note">${it.note}</p>` : ''}`;
+  const rg = row.querySelector('input[type=range]'), nb = row.querySelector('input[type=number]');
+  rg.addEventListener('input', () => { nb.value = rg.value; setVal(it.id, parseFloat(rg.value)); });
+  nb.addEventListener('input', () => {
+    const v = parseFloat(nb.value);
+    if (isFinite(v)) { rg.value = v; setVal(it.id, v); }
+  });
+  return row;
+}
+function materialRow(){
+  const row = document.createElement('div');
+  row.className = 'row'; row.id = 'row-mat';
+  row.innerHTML = `<label for="in-mat">재료</label>
+    <div class="ctl"><select id="in-mat">${MATERIALS.map(m => `<option value="${m.id}">${m.name}</option>`).join('')}</select></div>
+    <p class="note" id="mat-src"></p>`;
+  row.querySelector('select').addEventListener('change', e => {
+    S.mat = e.target.value;
+    const m = MATERIALS.find(x => x.id === S.mat);
+    if (m.lam) setControl('lam', m.lam);
+    updateMatNote(); schedule();
+  });
+  return row;
+}
+function uaRow(){
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `<label class="chk"><input type="checkbox" id="in-useUAo"> UA를 직접 입력(보정값 사용)</label>`;
+  row.querySelector('input').addEventListener('change', e => { S.useUAo = e.target.checked; syncDisabled(); schedule(); });
+  return row;
+}
+function buildControls(){
+  const root = $('#controls');
+  DEF.forEach(g => {
+    const box = document.createElement('div');
+    box.className = 'group'; box.dataset.layer = g.key;
+    box.innerHTML = `<h3>${g.title}</h3>`;
+    g.items.forEach(it => {
+      if (it.type === 'material') box.appendChild(materialRow());
+      else if (it.type === 'uaOverride') box.appendChild(uaRow());
+      else box.appendChild(numRow(it));
+    });
+    root.appendChild(box);
+  });
+  updateMatNote(); syncDisabled();
+}
+function updateMatNote(){
+  const m = MATERIALS.find(x => x.id === S.mat);
+  $('#mat-src').textContent = m.lam ? `λ ${m.lam} W/m·K, ${m.src}` : m.src;
+}
+function toggleRow(id, off){
+  const r = $('#row-' + id); if (!r) return;
+  r.classList.toggle('off', off);
+  r.querySelectorAll('input,select').forEach(x => { x.disabled = off; });
+}
+function syncDisabled(){
+  ['mat', 'lam', 'd', 'A', 'h'].forEach(id => toggleRow(id, S.useUAo));
+  toggleRow('UAo', !S.useUAo);
+  const noPack = Math.round(S.nPack) <= 0;
+  ['mPack', 'TpInit', 'Lf', 'K'].forEach(id => toggleRow(id, noPack));
+}
+function setVal(id, v){
+  S[id] = v;
+  if (id === 'lam') {
+    const m = MATERIALS.find(x => x.lam != null && Math.abs(x.lam - v) < 1e-9);
+    S.mat = m ? m.id : 'custom';
+    $('#in-mat').value = S.mat; updateMatNote();
+  }
+  if (id === 'nPack') syncDisabled();
+  schedule();
+}
+function setControl(id, v){
+  const rg = $('#rg-' + id), nb = $('#in-' + id);
+  if (rg) rg.value = v;
+  if (nb) nb.value = +(+v).toPrecision(6);
+  setVal(id, v);
+}
+function params(){
+  return { Ta: S.Ta, T0: S.T0, mP: S.mP, cP: S.cP, UA: wallUA(S), nPack: S.nPack, mPack: S.mPack,
+    TpInit: S.TpInit, Lf: S.Lf, K: S.K, durH: S.dur, Tlim: S.Tlim };
+}
+
+/* ---------- 그래프 ---------- */
+function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function niceStep(range, target){
+  const raw = range / target, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+  return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p;
+}
+function colorOf(name){
+  return { cold: cssVar('--cold'), warm: cssVar('--warm'), muted: cssVar('--muted'), ink: cssVar('--ink') }[name] || name;
+}
+function drawChart(cv, cfg, legendEl){
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (!W || !H) return;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const font = '12px "IBM Plex Sans KR", system-ui, sans-serif';
+  const pad = { l: 52, r: 14, t: 14, b: 42 };
+
+  const xs = [], ys = [];
+  cfg.series.forEach(s => s.x.forEach((x, i) => { if (isFinite(s.y[i])) { xs.push(x); ys.push(s.y[i]); } }));
+  (cfg.hlines || []).forEach(h => ys.push(h.y));
+  if (!xs.length) return;
+  let xMin = cfg.xMin != null ? cfg.xMin : Math.min(...xs);
+  let xMax = cfg.xMax != null ? cfg.xMax : Math.max(...xs);
+  if (xMax <= xMin) xMax = xMin + 1;
+  let yMin = Math.min(...ys), yMax = Math.max(...ys);
+  if (yMax - yMin < 2) { const c = (yMax + yMin) / 2; yMin = c - 1; yMax = c + 1; }
+  const yr = yMax - yMin; yMin -= yr * 0.06; yMax += yr * 0.06;
+  const ys_ = niceStep(yMax - yMin, 6);
+  yMin = Math.floor(yMin / ys_) * ys_; yMax = Math.ceil(yMax / ys_) * ys_;
+  const xs_ = niceStep(xMax - xMin, Math.max(3, Math.round(W / 110)));
+
+  const X = x => pad.l + (x - xMin) / (xMax - xMin) * (W - pad.l - pad.r);
+  const Y = y => pad.t + (yMax - y) / (yMax - yMin) * (H - pad.t - pad.b);
+  const pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
+
+  if (cfg.band != null) {
+    const yb = Math.min(Math.max(Y(cfg.band), pad.t), pad.t + ph);
+    ctx.fillStyle = cssVar('--warm-soft'); ctx.fillRect(pad.l, pad.t, pw, yb - pad.t);
+    ctx.fillStyle = cssVar('--cold-soft'); ctx.fillRect(pad.l, yb, pw, pad.t + ph - yb);
+  }
+
+  ctx.font = font; ctx.lineWidth = 1;
+  const dec = s => (s < 1 ? Math.min(3, Math.ceil(-Math.log10(s))) : 0);
+  ctx.strokeStyle = cssVar('--grid'); ctx.fillStyle = cssVar('--muted');
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (let v = yMin; v <= yMax + 1e-9; v += ys_) {
+    const y = Math.round(Y(v)) + 0.5;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+    ctx.fillText(fmt(v, dec(ys_)), pad.l - 6, y);
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let v = Math.ceil(xMin / xs_) * xs_; v <= xMax + 1e-9; v += xs_) {
+    const x = Math.round(X(v)) + 0.5;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+    ctx.fillText(fmt(v, dec(xs_)), x, pad.t + ph + 6);
+  }
+  ctx.fillText(cfg.xLabel || '', pad.l + pw / 2, pad.t + ph + 22);
+  ctx.save(); ctx.translate(13, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.textBaseline = 'middle'; ctx.fillText(cfg.yLabel || '', 0, 0); ctx.restore();
+
+  ctx.save();
+  ctx.beginPath(); ctx.rect(pad.l, pad.t, pw, ph); ctx.clip();
+  (cfg.hlines || []).forEach(h => {
+    ctx.strokeStyle = colorOf(h.color); ctx.lineWidth = 1.5; ctx.setLineDash(h.dash || []);
+    const y = Y(h.y);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+    if (h.tag) {
+      ctx.setLineDash([]); ctx.fillStyle = colorOf(h.color); ctx.font = '600 12px "IBM Plex Sans KR", system-ui, sans-serif';
+      ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'; ctx.fillText(h.tag, pad.l + pw - 6, y - 3);
+    }
+  });
+  ctx.setLineDash([]);
+  cfg.series.forEach(s => {
+    if (s.kind === 'dots') {
+      s.x.forEach((x, i) => {
+        if (!isFinite(s.y[i])) return;
+        ctx.beginPath(); ctx.arc(X(x), Y(s.y[i]), 4, 0, Math.PI * 2);
+        if (s.hollow) { ctx.lineWidth = 2; ctx.strokeStyle = colorOf(s.color); ctx.fillStyle = cssVar('--panel'); ctx.fill(); ctx.stroke(); }
+        else { ctx.fillStyle = colorOf(s.color); ctx.fill(); }
+      });
+      return;
+    }
+    if (s.thermal && cfg.band != null) {
+      const g = ctx.createLinearGradient(0, pad.t, 0, pad.t + ph);
+      const f = Math.min(1, Math.max(0, (Y(cfg.band) - pad.t) / ph));
+      g.addColorStop(0, cssVar('--warm')); g.addColorStop(f, cssVar('--warm'));
+      g.addColorStop(f, cssVar('--cold')); g.addColorStop(1, cssVar('--cold'));
+      ctx.strokeStyle = g;
+    } else ctx.strokeStyle = colorOf(s.color);
+    ctx.lineWidth = s.width || 2; ctx.setLineDash(s.dash || []); ctx.lineJoin = 'round';
+    ctx.beginPath();
+    let started = false;
+    s.x.forEach((x, i) => {
+      if (!isFinite(s.y[i])) { started = false; return; }
+      if (!started) { ctx.moveTo(X(x), Y(s.y[i])); started = true; } else ctx.lineTo(X(x), Y(s.y[i]));
+    });
+    ctx.stroke(); ctx.setLineDash([]);
+  });
+  if (cfg.cursor) {
+    const cxp = X(cfg.cursor.x);
+    ctx.strokeStyle = cssVar('--ink'); ctx.globalAlpha = 0.45; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(cxp, pad.t); ctx.lineTo(cxp, pad.t + ph); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    if (isFinite(cfg.cursor.y)) {
+      ctx.beginPath(); ctx.arc(cxp, Y(cfg.cursor.y), 5, 0, Math.PI * 2);
+      ctx.fillStyle = cssVar('--panel'); ctx.fill();
+      ctx.lineWidth = 2.5; ctx.strokeStyle = colorOf(cfg.cursor.color || 'ink'); ctx.stroke();
+    }
+  }
+  ctx.restore();
+  ctx.strokeStyle = cssVar('--muted'); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.l + 0.5, pad.t); ctx.lineTo(pad.l + 0.5, pad.t + ph + 0.5); ctx.lineTo(pad.l + pw, pad.t + ph + 0.5); ctx.stroke();
+
+  if (legendEl) {
+    const items = cfg.series.filter(s => s.label).map(s => {
+      const cls = s.kind === 'dots' ? ('pt' + (s.hollow ? ' hollow' : '')) : (s.thermal ? 'thermal' : (s.dash ? (s.dash[0] <= 2 ? 'dot' : 'dash') : ''));
+      return `<li style="color:${s.thermal ? 'inherit' : colorOf(s.color)}"><span class="sw ${cls}"></span><span style="color:var(--muted)">${s.label}</span></li>`;
+    }).concat((cfg.hlines || []).filter(h => h.label).map(h =>
+      `<li style="color:${colorOf(h.color)}"><span class="sw ${h.dash && h.dash[0] <= 2 ? 'dot' : 'dash'}"></span><span style="color:var(--muted)">${h.label}</span></li>`));
+    legendEl.innerHTML = items.join('');
+  }
+}
+
+/* ---------- 시뮬레이션 탭 ---------- */
+function readout(el, items){
+  el.innerHTML = items.map(([k, v, cls]) => `<div class="${cls || ''}"><dt>${k}</dt><dd>${v}</dd></div>`).join('');
+}
+function condLabel(){
+  return `출발 ${fmt(S.T0, 1)}°C, ${S.useUAo ? 'UA ' + fmt(S.UAo, 3) : '두께 ' + fmt(S.d, 0) + 'mm'}, 보냉팩 ${Math.round(S.nPack)}개`;
+}
+/* ---------- 상자 단면도 ---------- */
+function hexRgb(h){
+  h = h.replace('#', '');
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  const n = parseInt(h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function mix(a, b, t){
+  const A = hexRgb(a), B = hexRgb(b);
+  return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',')})`;
+}
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+function palette(){
+  return { panel: cssVar('--panel'), ink: cssVar('--ink'), muted: cssVar('--muted'), cold: cssVar('--cold'),
+    warm: cssVar('--warm'), warmSoft: cssVar('--warm-soft') };
+}
+// 기준 아래는 파랑(차가울수록 진하게), 기준 위는 빨강(바깥 온도에 가까울수록 진하게)
+function tempFill(T, Ta, Tlim, P){
+  if (T <= Tlim) return mix(P.panel, P.cold, 0.22 + 0.68 * clamp((Tlim - T) / Math.max(1, Tlim + 5), 0, 1));
+  return mix(P.panel, P.warm, 0.22 + 0.68 * clamp((T - Tlim) / Math.max(1, Ta - Tlim), 0, 1));
+}
+function wallPx(dMm, compact){
+  return compact ? clamp(2.5 + dMm * 0.32, 2.5, 26) : clamp(3 + dMm * 0.55, 3, 44);
+}
+function wallKind(){
+  if (S.useUAo) return 'hatch';
+  return { eps: 'eps', epe: 'epe', vip: 'vip' }[S.mat] || 'hatch';
+}
+function wallLabel(){
+  if (S.useUAo) return `벽 UA ${fmt(S.UAo, 3)} W/K (직접 입력)`;
+  const m = MATERIALS.find(x => x.id === S.mat);
+  const name = S.mat === 'custom' ? `λ ${S.lam} 재료` : m.name;
+  return `벽: ${name} ${fmt(S.d, 0)}mm`;
+}
+const esc = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+
+// o: {compact, wallPx, kind, T, Ta, Tlim, qWall, qPack, qRef, packs:{n, iceFrac, Tc, state}|null, wallLabel}
+function drawBox(svg, o){
+  if (!svg) return;
+  const P = palette(), id = svg.id;
+  const G = o.compact ? { W: 200, H: 190, x: 48, y: 36, w: 104, h: 118, arr: 38, pad: 6 }
+                      : { W: 520, H: 330, x: 108, y: 58, w: 304, h: 236, arr: 72, pad: 12 };
+  // 좁은 화면에서도 글자가 11px 아래로 작아지지 않게
+  const shown = svg.clientWidth || G.W;
+  const zoom = o.compact ? 1 : clamp(11 / (shown / G.W) / 13, 1, 1.45);
+  G.fs = 13 * zoom;
+  const showMiniLabel = !o.compact || shown >= 150;
+  const wp = Math.min(o.wallPx, G.w / 2 - 22);
+  const ix = G.x + wp, iy = G.y + wp, iw = G.w - 2 * wp, ih = G.h - 2 * wp;
+  const hasPacks = !!(o.packs && o.packs.n > 0);
+  const need = hasPacks ? 34 + 34 * zoom + 14 : 0; // 보냉팩과 그 위 글자가 차지하는 높이
+  const ch = o.compact ? ih * 0.56 : Math.max(ih * 0.3, Math.min(ih * 0.48, ih - 14 - need));
+  const cx = ix + G.pad, cw = iw - 2 * G.pad;
+  const cy = iy + ih - ch - (o.compact ? 5 : 8);
+  const base = mix(P.panel, P.ink, 0.06), mark = mix(P.panel, P.ink, 0.32);
+  const iceBase = mix(P.panel, P.cold, 0.1), liquid = mix(P.panel, P.cold, 0.62);
+  const wallFill = { eps: `url(#${id}-eps)`, epe: `url(#${id}-epe)`, vip: mix(P.panel, P.ink, 0.42) }[o.kind] || `url(#${id}-hatch)`;
+  const HEAD = 1.56; // 화살촉이 선 끝에서 튀어나오는 길이(선 굵기의 배수)
+  const width = q => (q > 0 ? 1 + 8 * Math.min(1, q / o.qRef) : 0);
+  const arrow = (x1, y1, x2, y2, w, color) => w > 0
+    ? `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${P[color]}" stroke-width="${w.toFixed(2)}" marker-end="url(#${id}-ah-${color})" opacity="0.9"/>`
+    : '';
+  const text = (str, x, y, t) => {
+    t = t || {};
+    const halo = t.halo ? ` stroke="${t.halo}" stroke-width="${(4 * zoom).toFixed(1)}" stroke-linejoin="round" paint-order="stroke"` : '';
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${t.anchor || 'middle'}" font-size="${t.fs || G.fs}" font-weight="${t.fw || 500}" fill="${t.fill || P.ink}"${halo} font-family="'IBM Plex Sans KR', system-ui, sans-serif">${esc(str)}</text>`;
+  };
+
+  let s = `<defs>
+    <pattern id="${id}-eps" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="${base}"/><circle cx="4" cy="4" r="2.7" fill="none" stroke="${mark}" stroke-width="1"/></pattern>
+    <pattern id="${id}-epe" width="12" height="6" patternUnits="userSpaceOnUse"><rect width="12" height="6" fill="${base}"/><path d="M0 3 Q3 0.5 6 3 T12 3" fill="none" stroke="${mark}" stroke-width="1"/></pattern>
+    <pattern id="${id}-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="${base}"/><line x1="0" y1="0" x2="0" y2="6" stroke="${mark}" stroke-width="1.4"/></pattern>
+    <pattern id="${id}-ice" width="7" height="7" patternUnits="userSpaceOnUse"><rect width="7" height="7" fill="${iceBase}"/><path d="M1.5 5.5 L5.5 1.5 M1.5 1.5 L5.5 5.5" stroke="${P.cold}" stroke-opacity="0.5" stroke-width="0.9"/></pattern>
+    <marker id="${id}-ah-warm" viewBox="0 0 10 10" refX="4" refY="5" markerWidth="2.6" markerHeight="2.6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="${P.warm}"/></marker>
+    <marker id="${id}-ah-cold" viewBox="0 0 10 10" refX="4" refY="5" markerWidth="2.6" markerHeight="2.6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="${P.cold}"/></marker>
+  </defs>`;
+  s += `<rect width="${G.W}" height="${G.H}" rx="8" fill="${P.warmSoft}"/>`;
+  s += `<rect x="${G.x}" y="${G.y}" width="${G.w}" height="${G.h}" rx="3" fill="${wallFill}" stroke="${mark}"/>`;
+  s += `<rect x="${ix}" y="${iy}" width="${iw}" height="${ih}" fill="${P.panel}" stroke="${mark}" stroke-width="0.8"/>`;
+
+  const cFill = tempFill(o.T, o.Ta, o.Tlim, P);
+  s += `<rect x="${cx}" y="${cy}" width="${cw}" height="${ch}" rx="${o.compact ? 4 : 6}" fill="${cFill}"/>`;
+
+  // 바깥에서 벽을 지나 들어오는 열 (세 방향, 각 화살표가 전체의 1/3씩)
+  const wW = width(o.qWall / 3);
+  const ym = cy + ch / 2;
+  s += arrow(G.x - G.arr, ym, ix + 4 - HEAD * wW, ym, wW, 'warm');
+  s += arrow(G.x + G.w + G.arr, ym, ix + iw - 4 + HEAD * wW, ym, wW, 'warm');
+  const xt = o.compact ? G.x + G.w / 2 : G.x + G.w * 0.8;
+  s += arrow(xt, G.y - G.arr * 0.62, xt, iy + 4 - HEAD * wW, wW, 'warm');
+
+  if (hasPacks) {
+    const n = Math.min(6, o.packs.n), gap = 7, ph = 33;
+    const pw = Math.min(66, (cw - gap * (n - 1)) / n);
+    const total = n * pw + (n - 1) * gap, x0 = cx + (cw - total) / 2, py = cy - ph - 1;
+    const iceH = ph * clamp(o.packs.iceFrac, 0, 1);
+    const wP = width(o.qPack / n);
+    for (let i = 0; i < n; i++) {
+      const px = x0 + i * (pw + gap);
+      s += `<rect x="${px.toFixed(1)}" y="${py}" width="${pw.toFixed(1)}" height="${ph}" rx="4" fill="${liquid}"/>`;
+      if (iceH > 0.4) {
+        s += `<rect x="${px.toFixed(1)}" y="${py}" width="${pw.toFixed(1)}" height="${iceH.toFixed(1)}" rx="${iceH > 7 ? 4 : 1}" fill="url(#${id}-ice)"/>`;
+        if (iceH < ph - 0.4) s += `<line x1="${(px + 1).toFixed(1)}" y1="${(py + iceH).toFixed(1)}" x2="${(px + pw - 1).toFixed(1)}" y2="${(py + iceH).toFixed(1)}" stroke="${P.cold}" stroke-width="1.2"/>`;
+      }
+      s += `<rect x="${px.toFixed(1)}" y="${py}" width="${pw.toFixed(1)}" height="${ph}" rx="4" fill="none" stroke="${P.cold}" stroke-width="1.6"/>`;
+      const end = cy - 1 + HEAD * wP;
+      s += arrow(px + pw / 2, end + 16, px + pw / 2, end, wP, 'cold');
+    }
+    s += text(`보냉팩 ${fmt(o.packs.Tc, 1)}°C`, cx + cw / 2, py - 10 - 17 * zoom, { fw: 600, halo: P.panel });
+    s += text(o.packs.state, cx + cw / 2, py - 8, { fs: 12 * zoom, fill: P.muted, halo: P.panel });
+  }
+
+  if (o.compact) {
+    if (showMiniLabel) s += text(`${fmt(o.T, 1)}°C`, cx + cw / 2, cy + ch / 2 + 5, { fw: 600, halo: P.panel });
+  } else {
+    s += text(`내용물 ${fmt(o.T, 1)}°C`, cx + cw / 2, cy + ch - 10, { fw: 600, halo: P.panel });
+    s += text(`바깥 공기 ${fmt(o.Ta, 1)}°C`, 14, 18 + 9 * zoom, { anchor: 'start', fw: 600, fill: P.warm });
+    s += text(o.wallLabel || '', G.x + G.w / 2, G.y + G.h + 10 + 12 * zoom, { fs: 12.5 * zoom, fill: P.muted });
+  }
+  svg.innerHTML = s;
+}
+
+/* ---------- 시뮬레이션 탭 ---------- */
+function readout(el, items){
+  el.innerHTML = items.map(([k, v, cls]) => `<div class="${cls || ''}"><dt>${k}</dt><dd>${v}</dd></div>`).join('');
+}
+function condLabel(){
+  return `출발 ${fmt(S.T0, 1)}°C, ${S.useUAo ? 'UA ' + fmt(S.UAo, 3) : '두께 ' + fmt(S.d, 0) + 'mm'}, 보냉팩 ${Math.round(S.nPack)}개`;
+}
+let simTime = 0, playing = false, raf = 0, lastTs = 0;
+function sampleAt(r, th){
+  const t = r.t, n = t.length;
+  const at = i => ({ Tp: r.Tp[i], Tc: r.Tc[i], H: r.H[i] });
+  if (th <= t[0]) return at(0);
+  if (th >= t[n - 1]) return at(n - 1);
+  let lo = 0, hi = n - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (t[m] <= th) lo = m; else hi = m; }
+  const f = (th - t[lo]) / (t[hi] - t[lo]);
+  const L = a => a[lo] + f * (a[hi] - a[lo]);
+  return { Tp: L(r.Tp), Tc: L(r.Tc), H: L(r.H) };
+}
+function renderSim(){
+  const p = params();
+  const r = simulate(p);
+  let minT = Infinity;
+  r.Tp.forEach(T => { if (T < minT) minT = T; });
+  lastSim = { p, r, qMax: Math.max(p.UA * (p.Ta - minT), 1e-6) };
+  const over = r.crossedAtStart;
+  const cross = over ? '출발부터 넘음' : (r.tCross === null ? `${fmt(S.dur, 1)}시간 안에 안 넘음` : fmtDur(r.tCross));
+  const items = [
+    ['보냉 시간 (냉장 기준까지)', cross, 'primary' + (over ? ' over' : '')],
+    ['시간상수 τ', `${fmtDur(r.tau)} <small>보냉팩 제외</small>`],
+    ['UA', `${fmt(r.UA, 3)} <small>W/K</small>`]
+  ];
+  if (r.hasPack) items.push(['보냉팩이 다 녹는 시각', r.tMelt === null ? '계산 시간 안에 안 녹음' : fmtDur(r.tMelt)]);
+  items.push(['계산 끝 온도', `${fmt(r.Tend, 1)}°C`]);
+  readout($('#sim-readout'), items);
+
+  let foot = `τ = m·c ÷ UA = ${fmt(r.CP, 0)} J/K ÷ ${fmt(r.UA, 3)} W/K = ${fmtDur(r.tau)}.`;
+  if (!r.hasPack) {
+    const lt = limitTime(r.tau, S.Ta, S.T0, S.Tlim);
+    if (lt != null) foot += ` 보냉팩이 없을 때 식 Tₐ − T(t) = (Tₐ − T₀) × e^(−t/τ)로 계산한 보냉 시간은 ${fmtDur(lt)}이에요. 위 시뮬레이션 값과 같으면 계산이 맞는 거예요.`;
+  } else {
+    foot += ' 보냉팩이 있으면 0°C에서 녹는 동안 열을 흡수해서 단순한 지수 곡선이 되지 않아요.';
+  }
+  $('#sim-foot').textContent = foot;
+
+  const tm = $('#tm');
+  tm.max = S.dur; tm.step = S.dur / 400;
+  if (simTime > S.dur) simTime = S.dur;
+  tm.value = simTime;
+  renderFrame();
+}
+function renderFrame(){
+  if (!lastSim) return;
+  const { p, r, qMax } = lastSim;
+  const s = sampleAt(r, simTime);
+  const qWall = p.UA * (p.Ta - s.Tp);
+  const qPack = r.hasPack ? r.Kt * (s.Tp - s.Tc) : 0;
+  let packs = null, state = '';
+  if (r.hasPack) {
+    const iceFrac = s.H < 0 ? 1 : (s.H <= r.Lmelt ? 1 - s.H / r.Lmelt : 0);
+    state = s.H < 0 ? '0°C 아래로 꽁꽁 언 상태' : (s.H <= r.Lmelt ? `녹는 중, 얼음 ${fmt(iceFrac * 100, 0)}% 남음` : '다 녹음');
+    packs = { n: Math.round(p.nPack), iceFrac, Tc: s.Tc, state };
+  }
+  const svg = $('#box-sim');
+  drawBox(svg, { compact: false, wallPx: S.useUAo ? 14 : wallPx(S.d, false), kind: wallKind(), T: s.Tp, Ta: p.Ta,
+    Tlim: p.Tlim, qWall, qPack, qRef: qMax / 3, packs, wallLabel: wallLabel() });
+  svg.setAttribute('aria-label', `단열 상자 단면도, 출발 후 ${fmtDur(simTime * 3600)}: 내용물 ${fmt(s.Tp, 1)}°C` +
+    (packs ? `, 보냉팩 ${fmt(s.Tc, 1)}°C, ${state}` : ''));
+
+  const hot = s.Tp > p.Tlim;
+  const gap = p.Tlim - s.Tp;
+  let rows = `<dt>출발 후</dt><dd>${fmtDur(simTime * 3600)}</dd>
+    <dt>내용물 온도</dt><dd style="color:var(${hot ? '--warm' : '--cold'})">${fmt(s.Tp, 1)}°C<small>${hot ? `기준보다 ${fmt(-gap, 1)}°C 높음` : `기준까지 ${fmt(gap, 1)}°C 남음`}</small></dd>`;
+  if (packs) rows += `<dt>보냉팩</dt><dd>${fmt(s.Tc, 1)}°C<small>${state}</small></dd>`;
+  rows += `<dt><span class="sw" style="color:var(--warm)"></span>벽으로 들어오는 열</dt><dd>${fmt(qWall, 2)} W</dd>`;
+  if (packs) rows += `<dt><span class="sw" style="color:var(--cold)"></span>보냉팩이 흡수하는 열</dt><dd>${fmt(qPack, 2)} W</dd>`;
+  const net = qWall - qPack;
+  rows += `<dt class="sum">내용물에 쌓이는 열</dt><dd class="sum">${fmt(net, 2)} W${net < 0 ? '<small>내용물이 식는 중</small>' : ''}</dd>`;
+  $('#now-sim').innerHTML = rows;
+  $('#tm-out').textContent = fmtDur(simTime * 3600);
+
+  const series = [];
+  if (baseline) series.push({ x: baseline.t, y: baseline.Tp, color: 'muted', width: 2, dash: [2, 3], label: '비교선: ' + baseline.label });
+  series.push({ x: r.t, y: r.Tp, thermal: true, width: 2.75, label: '내용물 온도 (기준 아래 파랑, 위 빨강)' });
+  if (r.hasPack) series.push({ x: r.t, y: r.Tc, color: 'cold', width: 1.5, dash: [6, 4], label: '보냉팩 온도' });
+  drawChart($('#cv-sim'), {
+    series, band: S.Tlim, xMin: 0, xMax: S.dur, xLabel: '시간 (h)', yLabel: '온도 (°C)',
+    cursor: { x: simTime, y: s.Tp, color: hot ? 'warm' : 'cold' },
+    hlines: [
+      { y: S.Tlim, color: 'warm', dash: [7, 4], tag: `냉장 기준 ${fmt(S.Tlim, 1)}°C` },
+      { y: S.Ta, color: 'muted', dash: [1, 4], label: `바깥 온도 ${fmt(S.Ta, 1)}°C` }
+    ]
+  }, $('#lg-sim'));
+}
+function stopPlay(){
+  playing = false; cancelAnimationFrame(raf);
+  $('#btn-play').textContent = '재생';
+}
+function startPlay(){
+  if (simTime >= S.dur - 1e-6) simTime = 0;
+  playing = true; lastTs = 0;
+  $('#btn-play').textContent = '멈춤';
+  raf = requestAnimationFrame(tick);
+}
+function tick(ts){
+  if (!playing) return;
+  if (lastTs) simTime = Math.min(S.dur, simTime + (ts - lastTs) / 1000 * S.dur / 8);
+  lastTs = ts;
+  $('#tm').value = simTime;
+  renderFrame();
+  if (simTime >= S.dur) { stopPlay(); return; }
+  raf = requestAnimationFrame(tick);
+}
+$('#btn-play').addEventListener('click', () => (playing ? stopPlay() : startPlay()));
+$('#tm').addEventListener('input', e => { stopPlay(); simTime = parseFloat(e.target.value) || 0; renderFrame(); });
+$('#btn-base').addEventListener('click', () => {
+  if (!lastSim) return;
+  baseline = { t: lastSim.r.t.slice(), Tp: lastSim.r.Tp.slice(), label: condLabel() };
+  $('#btn-base-clear').disabled = false; schedule();
+});
+$('#btn-base-clear').addEventListener('click', () => { baseline = null; $('#btn-base-clear').disabled = true; schedule(); });
+$('#btn-csv').addEventListener('click', () => {
+  if (!lastSim) return;
+  const r = lastSim.r;
+  const lines = ['시간(h),내용물 온도(°C),보냉팩 온도(°C)'];
+  r.t.forEach((t, i) => lines.push([t.toFixed(4), r.Tp[i].toFixed(3), r.hasPack ? r.Tc[i].toFixed(3) : ''].join(',')));
+  const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = '보냉시뮬레이션.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+
+/* ---------- A 탭 ---------- */
+const A = { T0b: 2 };
+(function(){
+  const rg = $('#rg-T0b'), nb = $('#in-T0b');
+  rg.addEventListener('input', () => { nb.value = rg.value; A.T0b = parseFloat(rg.value); schedule(); });
+  nb.addEventListener('input', () => { const v = parseFloat(nb.value); if (isFinite(v)) { rg.value = v; A.T0b = v; schedule(); } });
+})();
+function renderA(){
+  const Ta = S.Ta, T0 = S.T0, Tl = S.Tlim, T0b = A.T0b;
+  const k = equivRatio(Ta, T0, T0b, Tl);
+  const body = $('#a-body');
+  if (k == null) {
+    body.innerHTML = `<p class="msg">바깥 온도는 냉장 기준보다 높고, 두 출발 온도는 모두 기준보다 낮아야 계산할 수 있어요.</p>`;
+  } else {
+    const a = Math.log((Ta - T0) / (Ta - Tl)), b = Math.log((Ta - T0b) / (Ta - Tl));
+    const tau = S.mP * S.cP / wallUA(S);
+    const t1 = limitTime(tau, Ta, T0, Tl), t3 = limitTime(tau, Ta, T0b, Tl);
+    let html = `<div class="big"><strong>${fmt(k, 2)}배</strong><span>출발 온도를 ${fmt(T0, 1)}°C에서 ${fmt(T0b, 1)}°C로 낮추면, 포장 성능 τ를 이만큼 늘린 것과 같아요.</span></div>`;
+    if (T0b >= T0) html += `<p class="msg">T₀′를 지금 출발 온도(${fmt(T0, 1)}°C)보다 낮게 정해야 ‘더 차갑게 출발하기’의 효과를 볼 수 있어요.</p>`;
+    const pct = v => `${fmt(v * 100, 0)}%`;
+    html += `<p class="eq">${fmt(Tl, 1)}°C에 닿는 순간 남아 있는 온도 차(R): 지금 ${pct((Ta - Tl) / (Ta - T0))} → 낮춘 출발 ${pct((Ta - Tl) / (Ta - T0b))}<br>R은 t/τ에만 따라 정해지므로 보냉 시간 = τ × (온도 조건으로만 정해지는 수)이고, 두 보냉 시간의 비는 ${fmt(k, 2)}배예요(τ는 약분됨).</p>`;
+    html += `<table class="cmp"><thead><tr><th>조건 (지금 왼쪽 설정, 보냉팩 없음)</th><th>출발 온도</th><th>τ</th><th>기준 도달</th></tr></thead><tbody>
+      <tr><td>지금 그대로</td><td class="num">${fmt(T0, 1)}°C</td><td class="num">${fmtDur(tau)}</td><td class="num">${fmtDur(t1)}</td></tr>
+      <tr><td>포장 강화 (τ × ${fmt(k, 2)})</td><td class="num">${fmt(T0, 1)}°C</td><td class="num">${fmtDur(tau * k)}</td><td class="num">${fmtDur(t1 * k)}</td></tr>
+      <tr><td>사전 냉각</td><td class="num">${fmt(T0b, 1)}°C</td><td class="num">${fmtDur(tau)}</td><td class="num">${fmtDur(t3)}</td></tr>
+    </tbody></table>`;
+    if (!S.useUAo) {
+      const dNew = thicknessFor(k, S.lam, S.h, S.d);
+      if (S.d > 0) {
+        html += `<p class="foot">지금 포장(λ ${S.lam} W/m·K, h ${fmt(S.h, 1)} W/m²·K)에서 τ를 ${fmt(k, 2)}배로 늘리려면 두께를 ${fmt(S.d, 0)}mm에서 <b>${fmt(dNew, 1)}mm</b>로, 즉 ${fmt(dNew / S.d, 2)}배로 늘려야 해요. 두께 배율이 τ 배율보다 큰 이유는 겉면 공기층의 열저항(1/h)이 늘지 않기 때문이에요.</p>`;
+      } else {
+        html += `<p class="foot">지금은 포장 두께가 0이라, τ를 ${fmt(k, 2)}배로 늘리려면 이 재료를 ${fmt(dNew, 1)}mm 새로 감아야 해요.</p>`;
+      }
+    }
+    body.innerHTML = html;
+  }
+  renderABoxes(k);
+  // 바깥 온도에 따른 배율
+  const xs = [], ks = [];
+  for (let x = Math.ceil((Tl + 1) * 2) / 2; x <= 45; x += 0.5) {
+    const kk = equivRatio(x, T0, T0b, Tl);
+    if (kk != null) { xs.push(x); ks.push(kk); }
+  }
+  if (xs.length) {
+    const series = [{ x: xs, y: ks, color: 'cold', width: 2.5, label: `출발 ${fmt(T0, 1)}°C → ${fmt(T0b, 1)}°C일 때의 τ 배율` }];
+    if (k != null && Ta >= xs[0] && Ta <= 45) series.push({ x: [Ta], y: [k], kind: 'dots', color: 'warm', label: '지금 바깥 온도' });
+    drawChart($('#cv-a'), { series, xMin: xs[0], xMax: 45, xLabel: '바깥 온도 (°C)', yLabel: '같은 효과의 τ 배율 (배)' }, $('#lg-a'));
+  }
+}
+
+function renderABoxes(k){
+  const box = $('#a-boxes');
+  if (k == null) { box.innerHTML = ''; return; }
+  const Ta = S.Ta, T0 = S.T0, Tl = S.Tlim, T0b = A.T0b;
+  const UAn = wallUA(S), tau = S.mP * S.cP / UAn;
+  const t1 = limitTime(tau, Ta, T0, Tl);
+  const temps = [Tl, Ta - (Ta - T0) * Math.exp(-t1 / (k * tau)), Ta - (Ta - T0b) * Math.exp(-t1 / tau)];
+  const UAs = [UAn, UAn / k, UAn];
+  const qs = temps.map((T, i) => UAs[i] * (Ta - T));
+  const qMax = Math.max(...qs, 1e-6);
+  let wp, dLab;
+  if (S.useUAo) {
+    wp = [9, clamp(9 * k, 2.5, 26), 9];
+    dLab = [`UA ${fmt(UAn, 3)}`, `UA ${fmt(UAn / k, 3)}`, `UA ${fmt(UAn, 3)}`];
+  } else {
+    const dN = Math.max(0, thicknessFor(k, S.lam, S.h, S.d));
+    wp = [wallPx(S.d, true), wallPx(dN, true), wallPx(S.d, true)];
+    dLab = [`${fmt(S.d, 0)}mm`, `${fmt(dN, 1)}mm`, `${fmt(S.d, 0)}mm`];
+  }
+  const names = ['지금 그대로', `포장 강화 (τ × ${fmt(k, 2)})`, '사전 냉각'];
+  const starts = [T0, T0, T0b];
+  box.innerHTML = `<h3>같은 순간의 세 상자</h3>
+    <p class="foot" style="margin-top:0">‘지금 그대로’가 냉장 기준에 닿는 순간(출발 후 ${fmtDur(t1)})의 모습이에요. 화살표 굵기는 벽으로 들어오는 열의 양이에요.</p>
+    <div class="mini">${names.map((n, i) => `<figure><svg id="mini-${i}" viewBox="0 0 200 190" role="img" aria-label="${n}: 내용물 ${fmt(temps[i], 1)}°C"></svg><figcaption><b>${fmt(temps[i], 1)}°C</b>${n}<br>벽 ${dLab[i]}, ${fmt(starts[i], 1)}°C 출발</figcaption></figure>`).join('')}</div>`;
+  const kind = wallKind();
+  temps.forEach((T, i) => drawBox($('#mini-' + i), { compact: true, wallPx: wp[i], kind, T, Ta, Tlim: Tl,
+    qWall: qs[i], qPack: 0, qRef: qMax / 3, packs: null }));
+}
+
+/* ---------- B 탭 ---------- */
+const B = { ref: 'eps', refLam: 0.040, refD: 20, altName: '', altLam: null, unc: 20 };
+(function(){
+  const sel = $('#b-ref');
+  sel.innerHTML = MATERIALS.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+  sel.addEventListener('change', () => {
+    B.ref = sel.value;
+    const m = MATERIALS.find(x => x.id === B.ref);
+    if (m.lam) { B.refLam = m.lam; $('#b-refLam').value = m.lam; }
+    schedule();
+  });
+  const bind = (id, key, num) => $(id).addEventListener('input', e => {
+    const v = num ? parseFloat(e.target.value) : e.target.value;
+    B[key] = num ? (isFinite(v) ? v : null) : v;
+    if (key === 'refLam') {
+      const m = MATERIALS.find(x => x.lam != null && Math.abs(x.lam - v) < 1e-9);
+      B.ref = m ? m.id : 'custom'; sel.value = B.ref;
+    }
+    schedule();
+  });
+  bind('#b-refLam', 'refLam', true); bind('#b-refD', 'refD', true);
+  bind('#b-altName', 'altName', false); bind('#b-altLam', 'altLam', true); bind('#b-unc', 'unc', true);
+})();
+function renderB(){
+  const body = $('#b-body'), bars = $('#b-bars');
+  const refOk = B.refLam > 0 && B.refD >= 0;
+  if (!refOk) { body.innerHTML = `<p class="msg">기준 재료의 λ와 두께를 입력하세요.</p>`; bars.innerHTML = ''; return; }
+  const refName = (MATERIALS.find(x => x.id === B.ref) || {}).name || '기준 재료';
+  const name = B.altName.trim() || '대체 재료';
+  const rows = MATERIALS.filter(m => m.lam).map(m => ({ name: m.name, d: B.refD * m.lam / B.refLam, cls: m.id === B.ref ? 'ref' : '' }));
+  if (B.ref === 'custom') rows.unshift({ name: '기준 재료', d: B.refD, cls: 'ref' });
+  if (B.altLam > 0) {
+    const d = B.refD * B.altLam / B.refLam, u = (B.unc || 0) / 100;
+    const lo = d * (1 - u), hi = d * (1 + u);
+    body.innerHTML = `<div class="big"><strong>${fmt(d, 1)}mm</strong><span>${refName} ${fmt(B.refD, 0)}mm와 같은 보냉 성능을 내는 ${name}의 두께예요.</span></div>
+      <p class="foot" style="margin-top:4px">λ가 ±${fmt(B.unc || 0, 0)}% 다르면 ${fmt(lo, 1)}~${fmt(hi, 1)}mm 사이예요. 기준보다 ${fmt(d / Math.max(B.refD, 1e-9), 2)}배 두꺼워야 해요.</p>`;
+    rows.push({ name, d, cls: 'alt' });
+  } else {
+    body.innerHTML = `<p class="foot">대체 재료의 λ를 입력하면 필요한 두께를 계산해요. 아래는 Kim 외(2023)의 실측값으로 계산한 비교예요.</p>`;
+  }
+  const max = Math.max(...rows.map(r => r.d), 1e-9);
+  bars.innerHTML = rows.map(r => `<div class="bar ${r.cls}"><span>${r.name}</span><div class="track"><div class="fill" style="width:${(r.d / max * 100).toFixed(1)}%"></div></div><span class="v">${fmt(r.d, 1)}mm</span></div>`).join('');
+}
+
+/* ---------- 보정·검증 탭 ---------- */
+const LEE = {
+  cal: [[0, 8.25], [1, 8.70], [2, 9.27], [3, 9.93], [4, 10.62], [5, 11.36], [6, 12.41], [7, 13.46], [8, 14.36], [9, 15.20], [10, 16.06], [11, 16.96]],
+  val: [[0, 6.89], [1, 6.99], [2, 7.14], [3, 7.36], [4, 7.69], [5, 8.04], [6, 8.48], [7, 9.04], [8, 9.77], [9, 10.26], [10, 10.98], [11, 12.14]]
+};
+function parseData(txt){
+  const pts = [];
+  txt.split(/\r?\n/).forEach(line => {
+    const nums = line.trim().split(/[\s,;]+/).map(Number);
+    if (line.trim() && nums.length >= 2 && isFinite(nums[0]) && isFinite(nums[1])) pts.push({ t: nums[0], T: nums[1] });
+  });
+  if (pts.length < 3) return { err: '데이터가 3줄 이상 필요해요. 한 줄에 “시간(h), 온도(°C)”를 적어 주세요.' };
+  pts.sort((a, b) => a.t - b.t);
+  const t0 = pts[0].t; pts.forEach(p => { p.t -= t0; });
+  if (pts[pts.length - 1].t <= 0) return { err: '시간 값이 모두 같아요.' };
+  return { pts };
+}
+const nInt = id => Math.max(0, Math.round(parseFloat($(id).value) || 0));
+function setStatus(t){ $('#fit-status').textContent = t; }
+$('#btn-load-lee').addEventListener('click', () => {
+  const toTxt = arr => '시간(h), 온도(°C)\n' + arr.map(([t, T]) => `${t}, ${T.toFixed(2)}`).join('\n');
+  $('#ta-cal').value = toTxt(LEE.cal); $('#ta-val').value = toTxt(LEE.val);
+  $('#n-cal').value = 1; $('#n-val').value = 2;
+  setControl('Ta', 25);
+  fitState = null; sameState = null;
+  setStatus('논문 조건에 맞춰 바깥 온도를 25°C로 바꿨어요. 내용물과 보냉팩의 질량은 논문 값을 확인해서 왼쪽에 입력하세요.');
+  schedule();
+});
+['#ta-cal', '#ta-val', '#n-cal', '#n-val'].forEach(id => $(id).addEventListener('input', () => { fitState = null; sameState = null; schedule(); }));
+$('#btn-fit').addEventListener('click', () => {
+  const cal = parseData($('#ta-cal').value);
+  if (cal.err) { setStatus('보정용 ' + cal.err); return; }
+  const val = parseData($('#ta-val').value);
+  const nCal = nInt('#n-cal'), nVal = nInt('#n-val');
+  $('#btn-fit').disabled = true; setStatus('보정 중이에요…');
+  setTimeout(() => {
+    const t0 = performance.now();
+    const base = params();
+    const fitK = nCal > 0;
+    const f = fitParams(base, cal.pts, nCal, fitK);
+    const run = (pts, n, T0) => simulate(Object.assign({}, base, { UA: f.UA, K: f.K, nPack: n, T0, durH: pts[pts.length - 1].t, Tlim: 1e9 }),
+      { sampleTimes: pts.map(d => d.t * 3600) });
+    const rc = run(cal.pts, nCal, cal.pts[0].T);
+    const rv = val.err ? null : run(val.pts, nVal, val.pts[0].T);
+    fitState = { f, cal, val: val.err ? null : val, nCal, nVal, fitK, rc, rv,
+      rmseCal: rmseOf(rc.samples, cal.pts), rmseVal: rv ? rmseOf(rv.samples, val.pts) : null, CP: base.mP * base.cP };
+    sameState = null;
+    $('#btn-fit').disabled = false;
+    setStatus(`보정을 마쳤어요 (${Math.round(performance.now() - t0)}ms).` + (val.err ? ' 검증용 데이터가 없어서 검증은 건너뛰었어요.' : ''));
+    schedule();
+  }, 30);
+});
+$('#btn-apply').addEventListener('click', () => {
+  if (!fitState) return;
+  $('#in-useUAo').checked = true; S.useUAo = true; syncDisabled();
+  setControl('UAo', +fitState.f.UA.toPrecision(4));
+  if (fitState.fitK) setControl('K', +fitState.f.K.toPrecision(4));
+  setStatus('보정값을 시뮬레이터에 적용했어요. 시뮬레이션 탭에서 확인하세요.');
+});
+$('#btn-same').addEventListener('click', () => {
+  if (!fitState || !fitState.val) return;
+  const { f, cal, nVal } = fitState, base = params();
+  sameState = simulate(Object.assign({}, base, { UA: f.UA, K: f.K, nPack: nVal, T0: cal.pts[0].T, durH: cal.pts[cal.pts.length - 1].t, Tlim: 1e9 }));
+  schedule();
+});
+function renderCal(){
+  const cal = parseData($('#ta-cal').value), val = parseData($('#ta-val').value);
+  const series = [];
+  const nCal = nInt('#n-cal'), nVal = nInt('#n-val');
+  if (fitState) {
+    series.push({ x: fitState.rc.t, y: fitState.rc.Tp, color: 'cold', width: 2.25, label: `모델 (보정, 보냉팩 ${fitState.nCal}개)` });
+    if (fitState.rv) series.push({ x: fitState.rv.t, y: fitState.rv.Tp, color: 'warm', width: 2.25, label: `모델 예측 (검증, 보냉팩 ${fitState.nVal}개)` });
+    if (sameState) series.push({ x: sameState.t, y: sameState.Tp, color: 'warm', width: 2, dash: [6, 4], label: `보냉팩 ${fitState.nVal}개를 같은 온도에서 출발시킨 모델` });
+  }
+  if (!cal.err) series.push({ x: cal.pts.map(p => p.t), y: cal.pts.map(p => p.T), kind: 'dots', color: 'cold', label: `보정용 데이터 (보냉팩 ${nCal}개)` });
+  if (!val.err) series.push({ x: val.pts.map(p => p.t), y: val.pts.map(p => p.T), kind: 'dots', hollow: true, color: 'warm', label: `검증용 데이터 (보냉팩 ${nVal}개)` });
+
+  if (series.length) {
+    const xMax = Math.max(...series.map(s => s.x.length ? s.x[s.x.length - 1] : 0));
+    drawChart($('#cv-cal'), { series, xMin: 0, xMax, xLabel: '시간 (h)', yLabel: '온도 (°C)' }, $('#lg-cal'));
+  } else {
+    const cv = $('#cv-cal'); const ctx = cv.getContext('2d'); ctx.clearRect(0, 0, cv.width, cv.height);
+    $('#lg-cal').innerHTML = '<li>데이터를 넣거나 ‘이지운 외(2022) Table 1 불러오기’를 누르세요.</li>';
+  }
+
+  if (fitState) {
+    const fs = fitState;
+    const items = [
+      ['보정한 UA', `${fmt(fs.f.UA, 3)} <small>W/K</small>`],
+      ['보정한 K', fs.fitK ? `${fmt(fs.f.K, 3)} <small>W/K, 1개당</small>` : '<small>보냉팩이 없어 맞추지 않음</small>'],
+      ['τ (보냉팩 제외)', fmtDur(fs.CP / fs.f.UA)],
+      ['보정 오차 RMSE', `${fmt(fs.rmseCal, 2)}°C`],
+      ['검증 오차 RMSE', fs.rmseVal == null ? '—' : `${fmt(fs.rmseVal, 2)}°C`, 'primary']
+    ];
+    readout($('#cal-readout'), items);
+    $('#btn-apply').disabled = false;
+    $('#btn-same').disabled = !fs.val;
+    let foot = '검증 오차는 보정에 쓰지 않은 데이터를 모델이 얼마나 잘 예측했는지 보여 줘요. 이 값이 보정 오차와 비슷하게 작으면 모델을 믿을 근거가 생겨요.';
+    if (fs.f.edge) foot += ' 보정값이 탐색 범위 끝에 걸렸어요. 내용물과 보냉팩의 질량 같은 조건 값을 다시 확인하세요.';
+    if (sameState && fs.val) {
+      const dataGap = fs.cal.pts[fs.cal.pts.length - 1].T - fs.val.pts[fs.val.pts.length - 1].T;
+      const modelGap = fs.rc.Tend - sameState.Tend;
+      foot += ` 원래 데이터의 마지막 온도 차이는 ${fmt(dataGap, 2)}°C였어요. 두 조건을 같은 ${fmt(fs.cal.pts[0].T, 2)}°C에서 출발시킨 모델에서는 ${fmt(modelGap, 2)}°C예요. 이 ${fmt(modelGap, 2)}°C가 출발 온도 차이를 걷어 낸, 보냉팩 수에 따른 차이예요(모델 기준).`;
+    }
+    $('#cal-foot').textContent = foot;
+  } else {
+    $('#cal-readout').innerHTML = '';
+    $('#btn-apply').disabled = true; $('#btn-same').disabled = true;
+    $('#cal-foot').textContent = '';
+  }
+}
+
+/* ---------- 탭과 다시 그리기 ---------- */
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
+  view = b.dataset.view;
+  if (view !== 'sim') stopPlay();
+  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
+  document.querySelectorAll('.view').forEach(v => { v.hidden = v.id !== 'view-' + view; });
+  schedule();
+}));
+let pending = false;
+function schedule(){
+  if (pending) return;
+  pending = true;
+  requestAnimationFrame(() => {
+    pending = false;
+    if (view === 'sim') renderSim();
+    else if (view === 'a') renderA();
+    else if (view === 'b') renderB();
+    else if (view === 'cal') renderCal();
+  });
+}
+window.addEventListener('resize', schedule);
+if (window.matchMedia) {
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  if (mq.addEventListener) mq.addEventListener('change', schedule);
+}
+buildControls();
+schedule();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(schedule);
+</script>
+</body>
+</html>
